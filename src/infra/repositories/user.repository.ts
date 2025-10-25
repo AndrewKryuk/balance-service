@@ -5,7 +5,7 @@ import { BaseTypeOrmRepository } from '@kryuk/ddd-kit/infra/base/base-type-orm.r
 import { UserEntity } from '@infra/entities/user.entity';
 import { User } from '@domain/entities/user';
 import { UserRepositoryAbstract } from '@domain/abstract/repositories/user-repository.abstract';
-import { Nullable } from '@kryuk/ddd-kit/domain/types/nullable';
+import Decimal from 'decimal.js';
 
 @Injectable()
 export class UserRepository
@@ -19,12 +19,15 @@ export class UserRepository
     super(userRepository);
   }
 
-  async findOneByIdWithLock(id: string): Promise<Nullable<User>> {
-    const userEntity = await this.userRepository.findOne({
-      where: { id },
-      lock: { mode: 'pessimistic_write' },
-    });
+  async atomicUpdateBalance(userId: string, delta: Decimal): Promise<number> {
+    const result = await this.userRepository
+      .createQueryBuilder()
+      .update()
+      .set({ balance: () => `balance + ${delta.toString()}` })
+      .where('id = :userId', { userId })
+      .andWhere(`balance + ${delta.toString()} >= 0`)
+      .execute();
 
-    return userEntity?.toDomain() ?? null;
+    return result.affected ?? 0;
   }
 }

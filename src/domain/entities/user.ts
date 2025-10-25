@@ -21,10 +21,6 @@ export class User extends DomainEntity<IUserProps> {
     };
   }
 
-  updateBalance(balance: Money): void {
-    this.props.balance = balance;
-  }
-
   get id(): string {
     return this._id;
   }

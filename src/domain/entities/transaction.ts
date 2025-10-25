@@ -3,6 +3,7 @@ import { DefaultOptionalCreateProps } from '@kryuk/ddd-kit/domain/types/default-
 import { ITransactionProps } from '@domain/entity-props/transaction-props.interface';
 import { ETransactionAction } from '@domain/enums/transaction-action.enum';
 import { Money } from '@domain/value-objects/money';
+import Decimal from 'decimal.js';
 
 export class Transaction extends DomainEntity<ITransactionProps> {
   private constructor({
@@ -29,6 +30,12 @@ export class Transaction extends DomainEntity<ITransactionProps> {
       idempotencyKey,
       ts,
     };
+  }
+
+  calcDelta(): Decimal {
+    return this.props.action === ETransactionAction.debit
+      ? this.props.amount.amount.negated()
+      : this.props.amount.amount;
   }
 
   get id(): string {

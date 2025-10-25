@@ -12,7 +12,6 @@ import { NotFoundException } from '@application/exceptions/not-found.exception';
 import { USER_ERRORS } from '@domain/constants/users.constants';
 import { InsufficientBalanceException } from '@application/exceptions/insufficient-balance.exception';
 import { Money } from '@domain/value-objects/money';
-import { ETransactionAction } from '@domain/enums/transaction-action.enum';
 
 @Injectable()
 export class CreateTransactionUseCase
@@ -29,38 +28,33 @@ export class CreateTransactionUseCase
   async execute(
     @DTO() { userId, action, amount, idempotencyKey }: CreateTransactionDTO,
   ): Promise<Transaction> {
+    const transaction = Transaction.create({
+      userId,
+      action,
+      amount: Money.fromString(amount),
+      idempotencyKey,
+      ts: new Date(),
+    });
+
     return this.transactionService.withTransaction(async () => {
-      const user = await this.userRepository.findOneByIdWithLock(userId);
-
-      if (!user) {
-        throw new NotFoundException(USER_ERRORS.NOT_FOUND);
-      }
-
-      const transaction = Transaction.create({
+      const updatedRows = await this.userRepository.atomicUpdateBalance(
         userId,
-        action,
-        amount: Money.fromString(amount),
-        idempotencyKey,
-        ts: new Date(),
-      });
+        transaction.calcDelta(),
+      );
 
-      const newBalance =
-        transaction.action === ETransactionAction.debit
-          ? user.balance.subtract(transaction.amount)
-          : user.balance.add(transaction.amount);
+      if (updatedRows === 0) {
+        const userExists = await this.userRepository.exists(userId);
 
-      if (newBalance.isNegative()) {
+        if (!userExists) {
+          throw new NotFoundException(USER_ERRORS.NOT_FOUND);
+        }
+
         throw new InsufficientBalanceException(
           USER_ERRORS.INSUFFICIENT_BALANCE,
         );
       }
 
-      user.updateBalance(newBalance);
-
-      await this.transactionRepository.save(transaction);
-      await this.userRepository.save(user);
-
-      return transaction;
+      return this.transactionRepository.saveOrFailOnDuplicate(transaction);
     });
   }
 }

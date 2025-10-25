@@ -22,15 +22,15 @@ export class TransactionRepository
   }
 
   @Log({ level: 'debug' })
-  async save(transaction: Transaction): Promise<Transaction> {
+  async saveOrFailOnDuplicate(transaction: Transaction): Promise<Transaction> {
     try {
-      return await super.save(transaction);
+      return await this.save(transaction);
     } catch (error: unknown) {
       if (
         typeof error === 'object' &&
         error !== null &&
         'code' in error &&
-        error?.code === '23505'
+        error.code === '23505'
       ) {
         throw new ExistenceException(TRANSACTION_ERRORS.EXISTENCE);
       }

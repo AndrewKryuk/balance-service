@@ -19,18 +19,6 @@ export class Money extends ValueObject<IMoneyProps> {
     return this.props.amount;
   }
 
-  add(other: Money): Money {
-    return Money.fromDecimal(this.props.amount.add(other.amount));
-  }
-
-  subtract(other: Money): Money {
-    return Money.fromDecimal(this.props.amount.sub(other.amount));
-  }
-
-  isNegative(): boolean {
-    return this.props.amount.isNegative();
-  }
-
   toString(): string {
     return this.amount.toFixed(2);
   }

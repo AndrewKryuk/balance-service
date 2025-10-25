@@ -16,7 +16,6 @@ import { Money } from '@domain/value-objects/money';
 import { InsufficientBalanceException } from '@application/exceptions/insufficient-balance.exception';
 import { Transaction } from '@domain/entities/transaction';
 import { generateMockTransaction } from '@application/__tests__/__mocks__/generate-mock-transaction';
-import { generateMockMoney } from '@application/__tests__/__mocks__/generate-mock-money';
 
 describe('Create Transaction Use Case', () => {
   let userRepository: UserRepositoryAbstract;
@@ -40,14 +39,14 @@ describe('Create Transaction Use Case', () => {
         {
           provide: UserRepositoryAbstract,
           useValue: {
-            findOneByIdWithLock: jest.fn(),
-            save: jest.fn(),
+            atomicUpdateBalance: jest.fn(),
+            exists: jest.fn(),
           },
         },
         {
           provide: TransactionRepositoryAbstract,
           useValue: {
-            save: jest.fn(),
+            saveOrFailOnDuplicate: jest.fn(),
           },
         },
         {
@@ -148,20 +147,15 @@ describe('Create Transaction Use Case', () => {
       idempotencyKey: faker.string.uuid(),
     };
 
-    const findOneByIdWithLockSpy = jest
-      .spyOn(userRepository, 'findOneByIdWithLock')
-      .mockResolvedValue(null);
+    jest.spyOn(userRepository, 'atomicUpdateBalance').mockResolvedValue(0);
+    jest.spyOn(userRepository, 'exists').mockResolvedValue(false);
 
     await expect(
       createTransactionUseCase.execute(createTransactionDTO),
     ).rejects.toEqual(new NotFoundException(USER_ERRORS.NOT_FOUND));
-
-    expect(findOneByIdWithLockSpy).toHaveBeenCalledWith(
-      createTransactionDTO.userId,
-    );
   });
 
-  it('should throw exception if user balance is negative', async () => {
+  it('should throw exception if user balance is insufficient', async () => {
     const createTransactionDTO: CreateTransactionDTO = {
       userId: faker.string.uuid(),
       action: ETransactionAction.debit,
@@ -169,13 +163,8 @@ describe('Create Transaction Use Case', () => {
       idempotencyKey: faker.string.uuid(),
     };
 
-    const userMock = generateMockUser({
-      balance: Money.fromString('0.01'),
-    });
-
-    jest
-      .spyOn(userRepository, 'findOneByIdWithLock')
-      .mockResolvedValue(userMock);
+    jest.spyOn(userRepository, 'atomicUpdateBalance').mockResolvedValue(0);
+    jest.spyOn(userRepository, 'exists').mockResolvedValue(true);
 
     await expect(
       createTransactionUseCase.execute(createTransactionDTO),
@@ -202,33 +191,28 @@ describe('Create Transaction Use Case', () => {
       action: createTransactionDTO.action,
       amount: Money.fromString(createTransactionDTO.amount),
     });
-    const moneyMock = generateMockMoney();
 
-    jest
-      .spyOn(userRepository, 'findOneByIdWithLock')
-      .mockResolvedValue(userMock);
     const withTransactionSpy = jest.spyOn(
       transactionService,
       'withTransaction',
     );
-    const moneyFromStringSpy = jest.spyOn(Money, 'fromString');
     const transactionCreateSpy = jest
       .spyOn(Transaction, 'create')
       .mockReturnValue(transactionMock);
-    const subtractSpy = jest
-      .spyOn(userMock.balance, 'subtract')
-      .mockReturnValue(moneyMock);
-    const addSpy = jest
-      .spyOn(userMock.balance, 'add')
-      .mockReturnValue(moneyMock);
-    const moneyIsNegativeSpy = jest.spyOn(Money.prototype, 'isNegative');
-    const updateBalanceSpy = jest.spyOn(userMock, 'updateBalance');
-    const transactionSaveSpy = jest.spyOn(transactionRepository, 'save');
-    const userSaveSpy = jest.spyOn(userRepository, 'save');
+    const calcDeltaSpy = jest.spyOn(transactionMock, 'calcDelta');
+    const atomicUpdateBalanceSpy = jest
+      .spyOn(userRepository, 'atomicUpdateBalance')
+      .mockResolvedValue(1);
+    const existsSpy = jest.spyOn(userRepository, 'exists');
+    const saveOrFailOnDuplicateSpy = jest
+      .spyOn(transactionRepository, 'saveOrFailOnDuplicate')
+      .mockImplementation(async (transaction) => transaction);
+
+    const moneyFromStringSpy = jest.spyOn(Money, 'fromString');
 
     await expect(
       createTransactionUseCase.execute(createTransactionDTO),
-    ).resolves.toBe(transactionMock);
+    ).resolves.toEqual(transactionMock);
 
     expect(withTransactionSpy).toHaveBeenCalled();
     expect(moneyFromStringSpy).toHaveBeenCalledWith(
@@ -241,18 +225,12 @@ describe('Create Transaction Use Case', () => {
       idempotencyKey: createTransactionDTO.idempotencyKey,
       ts: new Date(),
     });
-
-    if (createTransactionDTO.action === ETransactionAction.debit) {
-      expect(subtractSpy).toHaveBeenCalledWith(transactionMock.amount);
-      expect(addSpy).not.toHaveBeenCalled();
-    } else {
-      expect(addSpy).toHaveBeenCalledWith(transactionMock.amount);
-      expect(subtractSpy).not.toHaveBeenCalled();
-    }
-
-    expect(moneyIsNegativeSpy).toHaveBeenCalled();
-    expect(updateBalanceSpy).toHaveBeenCalledWith(moneyMock);
-    expect(transactionSaveSpy).toHaveBeenCalledWith(transactionMock);
-    expect(userSaveSpy).toHaveBeenCalledWith(userMock);
+    expect(calcDeltaSpy).toHaveBeenCalled();
+    expect(atomicUpdateBalanceSpy).toHaveBeenCalledWith(
+      createTransactionDTO.userId,
+      transactionMock.calcDelta(),
+    );
+    expect(existsSpy).not.toHaveBeenCalled();
+    expect(saveOrFailOnDuplicateSpy).toHaveBeenCalledWith(transactionMock);
   });
 });
