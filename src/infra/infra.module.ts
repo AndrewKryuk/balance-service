@@ -1,0 +1,41 @@
+import { Module } from '@nestjs/common';
+import { RepositoriesModule } from './repositories/repositories.module';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { configurationProviders } from '@infra/configuration/configuration.providers';
+import { ConfigurationModule } from '@kryuk/ddd-kit/infra/configuration/configuration.module';
+import { TypeormConfigAbstract } from '@kryuk/ddd-kit/application/abstract/configuration/typeorm-config.abstract';
+import { DataSource } from 'typeorm';
+import { addTransactionalDataSource } from 'typeorm-transactional';
+import { DatabaseException } from '@kryuk/ddd-kit/application/exceptions/infra/database-exception';
+import { ERROR_CODES } from '@kryuk/ddd-kit/domain/constants/error-codes';
+import { ServicesModule } from '@infra/services/services.module';
+
+@Module({
+  imports: [
+    ConfigurationModule.forRoot([...configurationProviders]),
+    TypeOrmModule.forRootAsync({
+      inject: [TypeormConfigAbstract],
+      extraProviders: [],
+      useFactory: async (typeormConfig: TypeormConfigAbstract) =>
+        typeormConfig.options,
+      async dataSourceFactory(options) {
+        if (!options) {
+          throw new DatabaseException([
+            { message: 'Invalid options passed', code: ERROR_CODES.DB_ERROR },
+          ]);
+        }
+
+        const dataSource = new DataSource(options);
+        await dataSource.initialize();
+
+        return addTransactionalDataSource(dataSource);
+      },
+    }),
+    RepositoriesModule,
+    ServicesModule,
+  ],
+  controllers: [],
+  providers: [],
+  exports: [RepositoriesModule, ServicesModule],
+})
+export class InfraModule {}

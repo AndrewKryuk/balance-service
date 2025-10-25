@@ -1,0 +1,37 @@
+import { ValueObject } from '@kryuk/ddd-kit/domain/base/value-object';
+import { IMoneyProps } from '@domain/value-object-props/money-props.interface';
+import Decimal from 'decimal.js';
+
+export class Money extends ValueObject<IMoneyProps> {
+  private constructor(moneyProps: IMoneyProps) {
+    super(moneyProps);
+  }
+
+  static fromDecimal(value: Decimal): Money {
+    return new Money({ amount: value });
+  }
+
+  static fromString(value: string): Money {
+    return new Money({ amount: new Decimal(value) });
+  }
+
+  get amount(): Decimal {
+    return this.props.amount;
+  }
+
+  add(other: Money): Money {
+    return Money.fromDecimal(this.props.amount.add(other.amount));
+  }
+
+  subtract(other: Money): Money {
+    return Money.fromDecimal(this.props.amount.sub(other.amount));
+  }
+
+  isNegative(): boolean {
+    return this.props.amount.isNegative();
+  }
+
+  toString(): string {
+    return this.amount.toFixed(2);
+  }
+}

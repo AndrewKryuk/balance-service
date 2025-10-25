@@ -1,0 +1,42 @@
+version: '3.8'
+
+networks:
+  &app-network app_network:
+    name: *app-network
+
+x-common-template: &common-template
+  restart: always
+  networks:
+    - *app-network
+
+services:
+  &balance-service balance-service:
+    <<: *common-template
+    container_name: *balance-service
+    hostname: *balance-service
+    build:
+      context: .
+      dockerfile: .docker/app/Dockerfile
+    ports:
+      - '${HTTP_PORT}:${HTTP_PORT}'
+      - '9000:9000'
+    volumes:
+      - ./src:/opt/app/src
+      - ./database:/opt/app/database
+    env_file:
+      - .env
+
+  &balance-service-postgres balance-service-postgres:
+    <<: *common-template
+    container_name: *balance-service-postgres
+    hostname: *balance-service-postgres
+    image: postgres:16
+    ports:
+      - "${POSTGRES_PORT}:${POSTGRES_PORT}"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    env_file:
+      - .env
+
+volumes:
+  pg-data:
